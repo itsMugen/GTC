@@ -2,7 +2,7 @@ use regex::Regex;
 use reqwest::header;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::fs;
+use std::{fs, vec};
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Champion {
@@ -11,6 +11,8 @@ struct Champion {
     title: String,
     tags: Vec<String>,
     region: Region,
+    race: String,
+    year: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -27,33 +29,100 @@ enum Region {
     ShadowIsles,
     Ixtal,
     Bilgewater,
+    Void,
     Runeterra,
+    Unaffiliated,
+    Unknown,
+    NotSet,
 }
 
 #[tokio::main]
 async fn main() {
+    let mut champion_list: Vec<Champion> = Vec::new();
+    create_base(&mut champion_list);
+    get_race_and_region(&mut champion_list).await;
+}
+
+// gets race and region from riot api
+async fn get_race_and_region(champion_list: &mut Vec<Champion>) {
     let client = reqwest::ClientBuilder::new()
         .user_agent("reqwest/0.10.0")
         .build()
         .unwrap();
 
-    let response = client
-        .get("https://universe-meeps.leagueoflegends.com/v1/en_us/champions/ahri/index.json")
-        .header(header::CONTENT_TYPE, "application/json")
-        .send()
-        .await;
+    for mut champ in champion_list {
+        let url = format!(
+            "https://universe-meeps.leagueoflegends.com/v1/en_us/champions/{}/index.json",
+            match champ.name.as_str() {
+                "Nunu & Willump" => "nunu".to_string(),
+                "Wukong" => "monkeyking".to_string(),
+                _ => champ
+                    .name
+                    .to_ascii_lowercase()
+                    .replace(" ", "")
+                    .replace(".", "")
+                    .replace("'", ""),
+            }
+        );
 
-    println!("{:?}", response);
+        println!("{}", url);
+
+        let response = client
+            .get(url)
+            .header(header::CONTENT_TYPE, "application/json")
+            .send()
+            .await
+            .unwrap();
+
+        //todo: handle errors
+        let json = response.text().await.unwrap();
+
+        let mut re = Regex::new(r#""associated-faction-slug": "(.+)","#).unwrap();
+        let region = match re.captures(&json) {
+            Some(x) => match x.get(1).unwrap().as_str() {
+                "ionia" => Region::Ionia,
+                "demacia" => Region::Demacia,
+                "noxus" => Region::Noxus,
+                "freljord" => Region::Freljord,
+                "piltover" => Region::Piltover,
+                "zaun" => Region::Zaun,
+                "bandle-city" => Region::BandleCity,
+                "shurima" => Region::Shurima,
+                "mount-targon" => Region::Targon,
+                "shadow-isles" => Region::ShadowIsles,
+                "ixtal" => Region::Ixtal,
+                "bilgewater" => Region::Bilgewater,
+                "void" => Region::Void,
+                "runeterra" => Region::Runeterra,
+                "unaffiliated" => Region::Unaffiliated,
+                _ => Region::Unknown,
+            },
+            None => Region::NotSet,
+        };
+
+        champ.region = region;
+
+        re = Regex::new(r#""races": \[\s+\{\s+"name": "(.+)","#).unwrap();
+        let race = match re.captures(&json) {
+            Some(x) => x.get(1).unwrap().as_str(),
+            None => "Unknown",
+        };
+
+        champ.race = race.to_string();
+
+        re = Regex::new(r#""release\-date": "(\d{4})"#).unwrap();
+        let year = match re.captures(&json) {
+            Some(x) => x.get(1).unwrap().as_str(),
+            _ => "XXXX",
+        };
+
+        champ.year = year.to_string();
+
+        println!("{:?}", champ);
+    }
 }
-
-async fn get_race_and_region() {
-    //request a get to the riot api
-    let response = reqwest::get("https://api.spotify.com/v1/search").await;
-
-    println!("{:?}", response);
-}
-
-fn create_base() {
+// creates base structure from riot data
+fn create_base(champion_list: &mut Vec<Champion>) {
     //creates starting structure from riot data
     let paths = fs::read_dir("assets/13.5.1/data/en_US/champion").unwrap();
     let re = Regex::new(r"/([a-zA-Z]+).json").unwrap();
@@ -82,15 +151,12 @@ fn create_base() {
                 .iter()
                 .map(|x| x.as_str().unwrap().to_string())
                 .collect(),
-            region: Region::Runeterra,
+            region: Region::NotSet,
+            race: "Unknown".to_string(),
+            year: "XXXX".to_string(),
         };
 
-        println!("{:?}", champion);
-
-        let out_json = serde_json::to_string(&champion).unwrap();
-        //save to file
-        let out_path = format!("assets/new_format/{}.json", &matches[1]);
-        fs::write(out_path, out_json).expect("Unable to write file");
+        champion_list.push(champion);
     }
 }
 
