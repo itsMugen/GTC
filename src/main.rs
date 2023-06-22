@@ -1,3 +1,4 @@
+use futures::lock::Mutex;
 use regex::Regex;
 use reqwest::header;
 use serde::{Deserialize, Serialize};
@@ -41,6 +42,15 @@ async fn main() {
     let mut champion_list: Vec<Champion> = Vec::new();
     create_base(&mut champion_list);
     get_race_and_region(&mut champion_list).await;
+    save_champ_to_file(&champion_list);
+}
+
+fn save_champ_to_file(champion_list: &Vec<Champion>) {
+    for champion in champion_list {
+        let json = serde_json::to_string(&champion).unwrap();
+        fs::write(format!("assets/champions/{}.json", champion.name), json)
+            .expect("Unable to write file");
+    }
 }
 
 // gets race and region from riot api
@@ -65,8 +75,6 @@ async fn get_race_and_region(champion_list: &mut Vec<Champion>) {
             }
         );
 
-        println!("{}", url);
-
         let response = client
             .get(url)
             .header(header::CONTENT_TYPE, "application/json")
@@ -75,9 +83,10 @@ async fn get_race_and_region(champion_list: &mut Vec<Champion>) {
             .unwrap();
 
         //todo: handle errors
-        let json = response.text().await.unwrap();
 
+        //get and set region
         let mut re = Regex::new(r#""associated-faction-slug": "(.+)","#).unwrap();
+        let json = response.text().await.unwrap();
         let region = match re.captures(&json) {
             Some(x) => match x.get(1).unwrap().as_str() {
                 "ionia" => Region::Ionia,
@@ -99,32 +108,30 @@ async fn get_race_and_region(champion_list: &mut Vec<Champion>) {
             },
             None => Region::NotSet,
         };
-
         champ.region = region;
 
+        //get and set race
         re = Regex::new(r#""races": \[\s+\{\s+"name": "(.+)","#).unwrap();
         let race = match re.captures(&json) {
             Some(x) => x.get(1).unwrap().as_str(),
             None => "Unknown",
         };
-
         champ.race = race.to_string();
 
+        //get and set year
         re = Regex::new(r#""release\-date": "(\d{4})"#).unwrap();
         let year = match re.captures(&json) {
             Some(x) => x.get(1).unwrap().as_str(),
             _ => "XXXX",
         };
-
         champ.year = year.to_string();
-
-        println!("{:?}", champ);
     }
 }
+
 // creates base structure from riot data
 fn create_base(champion_list: &mut Vec<Champion>) {
     //creates starting structure from riot data
-    let paths = fs::read_dir("assets/13.5.1/data/en_US/champion").unwrap();
+    let paths = fs::read_dir("assets/13.4.1/data/en_US/champion").unwrap();
     let re = Regex::new(r"/([a-zA-Z]+).json").unwrap();
 
     for path in paths {
@@ -159,7 +166,3 @@ fn create_base(champion_list: &mut Vec<Champion>) {
         champion_list.push(champion);
     }
 }
-
-// fn print_type_of<T>(_: &T) {
-//     println!("{}", std::any::type_name::<T>())
-// }
