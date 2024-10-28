@@ -3,7 +3,7 @@ use regex::Regex;
 use reqwest::header;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{fs, vec};
+use std::fs;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Champion {
@@ -60,7 +60,7 @@ async fn get_race_and_region(champion_list: &mut Vec<Champion>) {
         .build()
         .unwrap();
 
-    for mut champ in champion_list {
+    for champ in champion_list {
         let url = format!(
             "https://universe-meeps.leagueoflegends.com/v1/en_us/champions/{}/index.json",
             match champ.name.as_str() {
