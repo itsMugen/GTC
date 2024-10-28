@@ -45,6 +45,7 @@ async fn main() {
     save_champ_to_file(&champion_list);
 }
 
+//save the data of the champion to file
 fn save_champ_to_file(champion_list: &Vec<Champion>) {
     for champion in champion_list {
         let json = serde_json::to_string(&champion).unwrap();
@@ -128,9 +129,9 @@ async fn get_race_and_region(champion_list: &mut Vec<Champion>) {
     }
 }
 
-// creates base structure from riot data
+// create base structure from riot data downloaded at
+// https://developer.riotgames.com/docs/lol#data-dragon
 fn create_base(champion_list: &mut Vec<Champion>) {
-    //creates starting structure from riot data
     let paths = fs::read_dir("assets/13.4.1/data/en_US/champion").unwrap();
     let re = Regex::new(r"/([a-zA-Z]+).json").unwrap();
 
